@@ -109,25 +109,33 @@ const authController = {
         }
     },
 
-    // Подтверждение email
-    verifyEmail: async (req, res) => {
-        try {
-            const { token } = req.params;
+    // Подтверждение email с удалением токена
+verifyEmail: async (req, res) => {
+    try {
+        const { token } = req.params;
 
-            const [result] = await pool.execute(
-                'UPDATE users SET is_verified = true WHERE verification_token = ?',
-                [token]
-            );
+        // Проверяем токен
+        const [users] = await pool.execute(
+            'SELECT id FROM users WHERE verification_token = ?',
+            [token]
+        );
 
-            if (result.affectedRows === 0) {
-                return res.status(400).json({ error: 'Invalid verification token' });
-            }
-
-            res.json({ message: 'Email verified successfully' });
-        } catch (error) {
-            res.status(500).json({ error: error.message });
+        if (!users.length) {
+            return res.status(400).json({ error: 'Invalid or expired verification token' });
         }
-    },
+
+        // Подтверждаем email и очищаем токен
+        await pool.execute(
+            'UPDATE users SET is_verified = true, verification_token = NULL WHERE id = ?',
+            [users[0].id]
+        );
+
+        res.json({ message: 'Email verified successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+},
+
 
     refreshToken: async (req, res) => {
         try {

@@ -7,10 +7,10 @@ const app = express();
 
 // Middleware
 app.use(cors({
- origin: ['http://localhost:3000', 'https://biz360-sepia.vercel.app'],
- credentials: true,
- methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
- allowedHeaders: ['Content-Type', 'Authorization']
+  origin: ['http://localhost:3000', 'https://biz360-sepia.vercel.app'],  // Ваши домены
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 
 app.use(express.json());
