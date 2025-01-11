@@ -7,36 +7,41 @@ const authController = {
     // Регистрация
     register: async (req, res) => {
         try {
+            console.log('Starting registration process...');
             const { email, password, first_name, last_name } = req.body;
-
+            console.log('Received data:', { email, first_name, last_name });
+    
             // Проверка существования email
+            console.log('Checking if email exists...');
             const [existingUser] = await pool.execute(
                 'SELECT id FROM users WHERE email = ?',
                 [email]
             );
-
+            console.log('Existing user check result:', existingUser);
+    
             if (existingUser.length) {
+                console.log('Email already exists');
                 return res.status(400).json({ error: 'Email already registered' });
             }
-
-            // Генерация verification token
+    
+            console.log('Generating tokens...');
             const verificationToken = crypto.randomBytes(32).toString('hex');
             const hashedPassword = await bcrypt.hash(password, 10);
-
-            // Создание пользователя
+    
+            console.log('Creating user...');
             const [result] = await pool.execute(
                 `INSERT INTO users (email, password, first_name, last_name, verification_token) 
                  VALUES (?, ?, ?, ?, ?)`,
                 [email, hashedPassword, first_name, last_name, verificationToken]
             );
-
-            // TODO: Отправка email с подтверждением
-
+    
+            console.log('User created successfully');
             res.status(201).json({
                 message: 'Registration successful. Please check your email for verification.',
                 userId: result.insertId
             });
         } catch (error) {
+            console.error('Registration error:', error);
             res.status(500).json({ error: error.message });
         }
     },
