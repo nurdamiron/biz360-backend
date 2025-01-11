@@ -1,26 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const auth = require('../middleware/auth');
 
-// Middleware для валидации
-const validateRequest = require('../middleware/validateRequest');
-
-// Auth routes
-router.post('/register', 
-  validateRequest(['email', 'password', 'first_name', 'last_name']), 
-  authController.register
-);
-
-router.post('/login', 
-  validateRequest(['email', 'password']), 
-  authController.login
-);
-
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+router.post('/refresh-token', authController.refreshToken);
+router.post('/logout', auth, authController.logout);
 router.get('/verify-email/:token', authController.verifyEmail);
+router.post('/forgot-password', authController.forgotPassword);
 
-router.post('/forgot-password', 
-  validateRequest(['email']), 
-  authController.forgotPassword
-);
+// Защищенный маршрут для проверки
+router.get('/me', auth, async (req, res) => {
+    try {
+        const [users] = await pool.execute(
+            'SELECT id, email, first_name, last_name FROM users WHERE id = ?',
+            [req.user.userId]
+        );
+        
+        if (!users.length) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json(users[0]);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 module.exports = router;

@@ -116,6 +116,110 @@ const authController = {
         }
     },
 
+    refreshToken: async (req, res) => {
+        try {
+            const { refresh_token } = req.body;
+            
+            if (!refresh_token) {
+                return res.status(400).json({ error: 'Refresh token required' });
+            }
+
+            const decoded = jwt.verify(refresh_token, process.env.JWT_REFRESH_SECRET);
+            
+            const [users] = await pool.execute(
+                'SELECT * FROM users WHERE id = ? AND refresh_token = ?',
+                [decoded.userId, refresh_token]
+            );
+
+            if (!users.length) {
+                return res.status(401).json({ error: 'Invalid refresh token' });
+            }
+
+            const user = users[0];
+
+            const accessToken = jwt.sign(
+                { userId: user.id, email: user.email },
+                process.env.JWT_SECRET,
+                { expiresIn: '1h' }
+            );
+
+            const newRefreshToken = jwt.sign(
+                { userId: user.id },
+                process.env.JWT_REFRESH_SECRET,
+                { expiresIn: '7d' }
+            );
+
+            await pool.execute(
+                'UPDATE users SET refresh_token = ? WHERE id = ?',
+                [newRefreshToken, user.id]
+            );
+
+            res.json({
+                accessToken,
+                refreshToken: newRefreshToken
+            });
+        } catch (error) {
+            res.status(401).json({ error: 'Invalid refresh token' });
+        }
+    },
+
+    logout: async (req, res) => {
+        try {
+            await pool.execute(
+                'UPDATE users SET refresh_token = NULL WHERE id = ?',
+                [req.user.userId]
+            );
+            
+            res.json({ message: 'Logged out successfully' });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    },
+
+    // Добавим метод сброса пароля
+    resetPassword: async (req, res) => {
+        try {
+            const { token, newPassword } = req.body;
+
+            const [users] = await pool.execute(
+                'SELECT * FROM users WHERE reset_token = ? AND reset_token_expiry > NOW()',
+                [token]
+            );
+
+            if (!users.length) {
+                return res.status(400).json({ error: 'Invalid or expired reset token' });
+            }
+
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+            await pool.execute(
+                'UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?',
+                [hashedPassword, users[0].id]
+            );
+
+            res.json({ message: 'Password reset successful' });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    },
+
+    getMe: async (req, res) => {
+        try {
+            const [users] = await pool.execute(
+                'SELECT id, email, first_name, last_name, is_verified FROM users WHERE id = ?',
+                [req.user.userId]
+            );
+
+            if (!users.length) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+
+            res.json(users[0]);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    },
+
     // Запрос на сброс пароля
     forgotPassword: async (req, res) => {
         try {
