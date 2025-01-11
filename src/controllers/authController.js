@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { sendVerificationEmail } = require('../utils/emailService');
 
 const authController = {
     // Регистрация
@@ -40,6 +41,13 @@ const authController = {
                 message: 'Registration successful. Please check your email for verification.',
                 userId: result.insertId
             });
+
+            await sendVerificationEmail(email, verificationToken);
+
+            res.status(201).json({
+                message: 'Registration successful. Please check your email for verification.',
+                userId: result.insertId
+    });
         } catch (error) {
             console.error('Registration error:', error);
             res.status(500).json({ error: error.message });
