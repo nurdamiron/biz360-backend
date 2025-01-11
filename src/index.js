@@ -15,6 +15,12 @@ app.use(cors({
 
 app.use(express.json());
 
+// Добавьте после app.use(express.json());
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log('Body:', req.body);
+  next();
+});
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
