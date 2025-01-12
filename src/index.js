@@ -8,7 +8,6 @@ const app = express();
 // Разрешенные домены
 const whitelist = [
   'http://localhost:3000',
-  'http://localhost:3030',
   'https://biz360-sepia.vercel.app'
 ];
 
