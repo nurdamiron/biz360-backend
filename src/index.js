@@ -102,7 +102,7 @@ app.get('/', (req, res) => {
       auth: {
         register: '/api/auth/register',
         login: '/api/auth/login',
-        verifyEmail: '/api/auth/verify-email/:token',
+        verifyEmail: '/api/auth/verify/:token',
         forgotPassword: '/api/auth/forgot-password',
         resetPassword: '/api/auth/reset-password',
         me: '/api/auth/me',

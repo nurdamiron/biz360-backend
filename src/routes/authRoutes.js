@@ -7,7 +7,7 @@ const auth = require('../middleware/auth');
 // Основные маршруты аутентификации
 router.post('/register', authController.register);
 router.post('/login', authController.login);
-router.get('/verify-email/:token', authController.verifyEmail);
+router.get('/verify/:token', authController.verifyEmail);
 router.post('/forgot-password', authController.forgotPassword);
 
 // Маршруты управления токенами

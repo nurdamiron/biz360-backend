@@ -9,7 +9,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const sendVerificationEmail = async (email, verificationToken) => {
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify/${verificationToken}`;
 
     
     const mailOptions = {
@@ -84,7 +84,7 @@ const sendVerificationEmail = async (email, verificationToken) => {
                         <a href="${verificationUrl}" class="button">Подтвердить email</a>
                         
                         <p>Если кнопка не работает, вы можете скопировать и вставить следующую ссылку в ваш браузер:</p>
-                        <p style="color: #0066cc;">${verificationUrl}</p>
+                        <p style="color:rgb(117, 182, 248);">${verificationUrl}</p>
                         
                         <p>Если вы не регистрировались на Biz360, просто проигнорируйте это письмо.</p>
                         <p>Обратите внимание, что ссылка действительна в течение 24 часов.</p>
