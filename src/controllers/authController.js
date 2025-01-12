@@ -37,51 +37,65 @@ const authController = {
             await connection.beginTransaction();
             
             const { email, password, first_name, last_name } = req.body;
-
-            // Валидация входных данных
+            console.log('Получены данные:', { email, first_name, last_name });
+    
+            // Валидация
             if (!email || !password) {
                 return res.status(400).json({ 
-                    error: 'Email and password are required' 
+                    error: 'Email и пароль обязательны' 
                 });
             }
-
+    
             // Проверка существования email
             const [existingUser] = await connection.execute(
                 'SELECT id FROM users WHERE email = ?',
                 [email]
             );
-
+    
             if (existingUser.length) {
                 return res.status(400).json({ 
-                    error: 'Email already registered' 
+                    error: 'Этот email уже зарегистрирован' 
                 });
             }
-
-            // Генерация токена верификации и хеширование пароля
-            const verificationToken = generateRandomToken();
-            const hashedPassword = await hashPassword(password);
-
+    
+            // Генерация токена и хеширование пароля
+            const verificationToken = crypto.randomBytes(32).toString('hex');
+            const hashedPassword = await bcrypt.hash(password, 10);
+    
             // Создание пользователя
             const [result] = await connection.execute(
-                `INSERT INTO users (email, password, first_name, last_name, verification_token) 
-                 VALUES (?, ?, ?, ?, ?)`,
+                `INSERT INTO users (
+                    email, 
+                    password, 
+                    first_name, 
+                    last_name, 
+                    verification_token,
+                    is_verified
+                ) VALUES (?, ?, ?, ?, ?, false)`,
                 [email, hashedPassword, first_name, last_name, verificationToken]
             );
-
+    
             await connection.commit();
-
-            // Отправка письма с подтверждением
-            await sendVerificationEmail(email, verificationToken);
-
+    
+            // Отправка email для верификации
+            try {
+                await sendVerificationEmail(email, verificationToken);
+            } catch (emailError) {
+                console.error('Ошибка отправки email:', emailError);
+                // Продолжаем выполнение, даже если email не отправился
+            }
+    
             res.status(201).json({
-                message: 'Registration successful. Please check your email for verification.',
+                message: 'Регистрация успешна. Проверьте email для подтверждения.',
                 userId: result.insertId
             });
+    
         } catch (error) {
             await connection.rollback();
-            console.error('Registration error:', error);
+            console.error('Ошибка регистрации:', error);
+            
             res.status(500).json({ 
-                error: 'Registration failed. Please try again.' 
+                error: 'Ошибка при регистрации. Попробуйте позже.' 
             });
         } finally {
             connection.release();
