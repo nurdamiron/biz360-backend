@@ -18,6 +18,8 @@ const generateTokens = (userId, email) => {
         { expiresIn: '7d' }
     );
 
+    
+
     return { accessToken, refreshToken };
 };
 
@@ -89,6 +91,9 @@ const authController = {
                 message: 'Регистрация успешна. Проверьте email для подтверждения.',
                 userId: result.insertId
             });
+
+            console.log('SQL result:', result);
+
     
         } catch (error) {
             await connection.rollback();
@@ -241,16 +246,19 @@ const authController = {
             // Верификация refresh токена
             const decoded = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET);
 
+            if (decoded.exp * 1000 < Date.now()) {
+                return res.status(401).json({ error: 'Refresh token expired' });
+            }
+
             // Проверка токена в базе
             const [users] = await pool.execute(
                 'SELECT * FROM users WHERE id = ? AND refresh_token = ?',
                 [decoded.userId, refresh]
             );
-
+            
+            
             if (!users.length) {
-                return res.status(401).json({ 
-                    error: 'Invalid refresh token' 
-                });
+                return res.status(401).json({ error: 'Invalid token or user session expired' });
             }
 
             const user = users[0];
