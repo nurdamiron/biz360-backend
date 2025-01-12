@@ -165,71 +165,68 @@ const authController = {
     // Подтверждение email
     // authController.js
 
-verifyEmail: async (req, res) => {
-    const connection = await pool.getConnection();
-    try {
-        await connection.beginTransaction();
-        
-        const { token } = req.params;
-        console.log('Получен токен верификации:', token);
-
-        // Проверяем существование пользователя
-        const [users] = await connection.execute(
-            'SELECT id, is_verified FROM users WHERE verification_token = ?',
-            [token]
-        );
-        console.log('Найденные пользователи:', users);
-
-        if (!users.length) {
-            await connection.rollback();
-            return res.status(400).json({ 
-                error: 'Неверный или просроченный токен верификации' 
+    verifyEmail: async (req, res) => {
+        try {
+            const { token } = req.params;
+            console.log('Получен токен для верификации:', token);
+    
+            // Устанавливаем заголовки
+            res.setHeader('Content-Type', 'application/json');
+    
+            if (!token) {
+                return res.status(400).json({ 
+                    success: false,
+                    error: 'Токен верификации отсутствует' 
+                });
+            }
+    
+            // Поиск пользователя
+            const [users] = await pool.execute(
+                'SELECT id, is_verified FROM users WHERE verification_token = ?',
+                [token]
+            );
+            console.log('Найден пользователь:', users[0]);
+    
+            if (!users.length) {
+                return res.status(400).json({ 
+                    success: false,
+                    error: 'Неверный токен верификации' 
+                });
+            }
+    
+            // Обновление статуса
+            await pool.execute(
+                `UPDATE users 
+                 SET is_verified = 1, 
+                     verification_token = NULL,
+                     updated_at = CURRENT_TIMESTAMP 
+                 WHERE id = ?`,
+                [users[0].id]
+            );
+    
+            // Проверяем обновление
+            const [updatedUser] = await pool.execute(
+                'SELECT is_verified FROM users WHERE id = ?',
+                [users[0].id]
+            );
+    
+            if (!updatedUser[0] || updatedUser[0].is_verified !== 1) {
+                throw new Error('Не удалось обновить статус верификации');
+            }
+    
+            return res.status(200).json({
+                success: true,
+                message: 'Email успешно подтвержден! Теперь вы можете войти в систему.'
+            });
+    
+        } catch (error) {
+            console.error('Ошибка верификации:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'Не удалось подтвердить email. Пожалуйста, попробуйте позже.'
             });
         }
-
-        // Обновляем статус верификации
-        // Явно указываем значение 1 для is_verified
-        const [updateResult] = await connection.execute(
-            `UPDATE users 
-             SET is_verified = 1, 
-                 verification_token = NULL,
-                 updated_at = CURRENT_TIMESTAMP 
-             WHERE id = ? AND verification_token = ?`,
-            [users[0].id, token]
-        );
-        console.log('Результат обновления:', updateResult);
-
-        if (updateResult.affectedRows === 0) {
-            await connection.rollback();
-            return res.status(400).json({ 
-                error: 'Не удалось обновить статус верификации' 
-            });
-        }
-
-        // Проверяем обновление
-        const [verifiedUser] = await connection.execute(
-            'SELECT id, email, is_verified FROM users WHERE id = ?',
-            [users[0].id]
-        );
-        console.log('Статус верифицированного пользователя:', verifiedUser[0]);
-
-        await connection.commit();
-
-        res.json({ 
-            message: 'Email успешно подтвержден! Теперь вы можете войти в систему.',
-            success: true
-        });
-
-    } catch (error) {
-        await connection.rollback();
-        console.error('Ошибка верификации email:', error);
-        res.status(500).json({ 
-            error: 'Не удалось подтвердить email. Пожалуйста, попробуйте позже.' 
-        });
-    } finally {
-        connection.release();
-    }
-},
+    },
 
     
     // Обновление токена
