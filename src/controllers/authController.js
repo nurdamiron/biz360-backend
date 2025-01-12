@@ -2,9 +2,9 @@ const pool = require('../config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/emailService');
+const { sendVerificationEmail } = require('../utils/emailService');
 
-// Вспомогательные функции
+// Utility functions
 const generateTokens = (userId, email) => {
     const accessToken = jwt.sign(
         { userId, email },
@@ -21,80 +21,70 @@ const generateTokens = (userId, email) => {
     return { accessToken, refreshToken };
 };
 
-const hashPassword = async (password) => {
-    return await bcrypt.hash(password, 10);
-};
-
-const generateRandomToken = () => {
-    return crypto.randomBytes(32).toString('hex');
-};
-
 const authController = {
-    // Регистрация пользователя
+    // Registration
     register: async (req, res) => {
         const connection = await pool.getConnection();
         try {
             await connection.beginTransaction();
             
             const { email, password, first_name, last_name } = req.body;
-            console.log('Получены данные:', { email, first_name, last_name });
-    
-            // Валидация
+
             if (!email || !password) {
                 return res.status(400).json({ 
+                    success: false,
                     error: 'Email и пароль обязательны' 
                 });
             }
-    
-            // Проверка существования email
+
+            // Check existing user
             const [existingUser] = await connection.execute(
                 'SELECT id FROM users WHERE email = ?',
                 [email]
             );
-    
+
             if (existingUser.length) {
+                await connection.rollback();
                 return res.status(400).json({ 
+                    success: false,
                     error: 'Этот email уже зарегистрирован' 
                 });
             }
-    
-            // Генерация токена и хеширование пароля
+
+            // Generate verification token and hash password
             const verificationToken = crypto.randomBytes(32).toString('hex');
             const hashedPassword = await bcrypt.hash(password, 10);
-    
-            // Создание пользователя
+
+            // Create user
             const [result] = await connection.execute(
                 `INSERT INTO users (
-                    email, 
-                    password, 
-                    first_name, 
-                    last_name, 
-                    verification_token,
-                    is_verified
-                ) VALUES (?, ?, ?, ?, ?, false)`,
+                    email, password, first_name, last_name, 
+                    verification_token, is_verified, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 0, NOW(), NOW())`,
                 [email, hashedPassword, first_name, last_name, verificationToken]
             );
-    
+
             await connection.commit();
-    
-            // Отправка email для верификации
+
+            // Send verification email
             try {
                 await sendVerificationEmail(email, verificationToken);
+                console.log('Verification email sent to:', email);
             } catch (emailError) {
-                console.error('Ошибка отправки email:', emailError);
-                // Продолжаем выполнение, даже если email не отправился
+                console.error('Error sending verification email:', emailError);
             }
-    
+
             res.status(201).json({
+                success: true,
                 message: 'Регистрация успешна. Проверьте email для подтверждения.',
                 userId: result.insertId
             });
-    
+
         } catch (error) {
             await connection.rollback();
-            console.error('Ошибка регистрации:', error);
-            
+            console.error('Registration error:', error);
             res.status(500).json({ 
+                success: false,
                 error: 'Ошибка при регистрации. Попробуйте позже.' 
             });
         } finally {
@@ -102,49 +92,49 @@ const authController = {
         }
     },
 
-    // Вход в систему
+    // Login
     login: async (req, res) => {
+        const connection = await pool.getConnection();
         try {
             const { email, password } = req.body;
 
             if (!email || !password) {
                 return res.status(400).json({ 
-                    error: 'Email and password are required' 
+                    success: false,
+                    error: 'Email и пароль обязательны' 
                 });
             }
 
-            // Поиск пользователя
-            const [users] = await pool.execute(
+            const [users] = await connection.execute(
                 'SELECT * FROM users WHERE email = ?',
                 [email]
             );
 
             const user = users[0];
 
-            // Проверка пользователя и пароля
             if (!user || !(await bcrypt.compare(password, user.password))) {
                 return res.status(401).json({ 
-                    error: 'Invalid credentials' 
+                    success: false,
+                    error: 'Неверный email или пароль' 
                 });
             }
 
-            // Проверка верификации email
             if (!user.is_verified) {
-                return res.status(401).json({ 
-                    error: 'Please verify your email first' 
+                return res.status(401).json({
+                    success: false,
+                    error: 'Пожалуйста, подтвердите ваш email'
                 });
             }
 
-            // Генерация токенов
             const { accessToken, refreshToken } = generateTokens(user.id, user.email);
 
-            // Сохранение refresh token
-            await pool.execute(
-                'UPDATE users SET refresh_token = ? WHERE id = ?',
+            await connection.execute(
+                'UPDATE users SET refresh_token = ?, updated_at = NOW() WHERE id = ?',
                 [refreshToken, user.id]
             );
 
             res.json({
+                success: true,
                 access: accessToken,
                 refresh: refreshToken,
                 user: {
@@ -156,253 +146,180 @@ const authController = {
             });
         } catch (error) {
             console.error('Login error:', error);
-            res.status(500).json({ 
-                error: 'Login failed. Please try again.' 
+            res.status(500).json({
+                success: false,
+                error: 'Ошибка входа. Попробуйте позже.'
             });
+        } finally {
+            connection.release();
         }
     },
 
-    // Подтверждение email
-    // authController.js
-
+    // Email verification
     verifyEmail: async (req, res) => {
+        const connection = await pool.getConnection();
         try {
             const { token } = req.params;
-            console.log('Получен токен для верификации:', token);
-    
-            // Устанавливаем заголовки
-            res.setHeader('Content-Type', 'application/json');
-    
+            console.log('Verifying email with token:', token);
+
             if (!token) {
-                return res.status(400).json({ 
+                return res.status(400).json({
                     success: false,
-                    error: 'Токен верификации отсутствует' 
+                    error: 'Токен верификации отсутствует'
                 });
             }
-    
-            // Поиск пользователя
-            const [users] = await pool.execute(
+
+            const [users] = await connection.execute(
                 'SELECT id, is_verified FROM users WHERE verification_token = ?',
                 [token]
             );
-            console.log('Найден пользователь:', users[0]);
-    
+
             if (!users.length) {
-                return res.status(400).json({ 
+                return res.status(400).json({
                     success: false,
-                    error: 'Неверный токен верификации' 
+                    error: 'Неверный или истекший токен верификации'
                 });
             }
-    
-            // Обновление статуса
-            await pool.execute(
+
+            if (users[0].is_verified) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Email уже подтвержден'
+                });
+            }
+
+            await connection.execute(
                 `UPDATE users 
-                 SET is_verified = 1, 
+                 SET is_verified = 1,
                      verification_token = NULL,
-                     updated_at = CURRENT_TIMESTAMP 
+                     updated_at = NOW()
                  WHERE id = ?`,
                 [users[0].id]
             );
-    
-            // Проверяем обновление
-            const [updatedUser] = await pool.execute(
-                'SELECT is_verified FROM users WHERE id = ?',
-                [users[0].id]
-            );
-    
-            if (!updatedUser[0] || updatedUser[0].is_verified !== 1) {
-                throw new Error('Не удалось обновить статус верификации');
-            }
-    
-            return res.status(200).json({
+
+            await connection.commit();
+
+            res.json({
                 success: true,
                 message: 'Email успешно подтвержден! Теперь вы можете войти в систему.'
             });
-    
+
         } catch (error) {
-            console.error('Ошибка верификации:', error);
-            return res.status(500).json({
+            await connection.rollback();
+            console.error('Email verification error:', error);
+            res.status(500).json({
                 success: false,
-                error: 'Не удалось подтвердить email. Пожалуйста, попробуйте позже.'
+                error: 'Ошибка при подтверждении email. Попробуйте позже.'
             });
+        } finally {
+            connection.release();
         }
     },
 
-    
-    // Обновление токена
+    // Token refresh
     refreshToken: async (req, res) => {
+        const connection = await pool.getConnection();
         try {
             const { refresh } = req.body;
 
             if (!refresh) {
-                return res.status(400).json({ 
-                    error: 'Refresh token is required' 
+                return res.status(400).json({
+                    success: false,
+                    error: 'Refresh token обязателен'
                 });
             }
 
-            // Верификация refresh токена
             const decoded = jwt.verify(refresh, process.env.JWT_REFRESH_SECRET);
-
-            // Проверка токена в базе
-            const [users] = await pool.execute(
+            
+            const [users] = await connection.execute(
                 'SELECT * FROM users WHERE id = ? AND refresh_token = ?',
                 [decoded.userId, refresh]
             );
 
             if (!users.length) {
-                return res.status(401).json({ 
-                    error: 'Invalid refresh token' 
+                return res.status(401).json({
+                    success: false,
+                    error: 'Недействительный refresh token'
                 });
             }
 
             const user = users[0];
-
-            // Генерация новых токенов
             const { accessToken, refreshToken } = generateTokens(user.id, user.email);
 
-            // Обновление refresh токена
-            await pool.execute(
-                'UPDATE users SET refresh_token = ? WHERE id = ?',
+            await connection.execute(
+                'UPDATE users SET refresh_token = ?, updated_at = NOW() WHERE id = ?',
                 [refreshToken, user.id]
             );
 
             res.json({
+                success: true,
                 access: accessToken,
                 refresh: refreshToken
             });
+
         } catch (error) {
             console.error('Token refresh error:', error);
-            res.status(401).json({ 
-                error: 'Invalid refresh token' 
+            res.status(401).json({
+                success: false,
+                error: 'Ошибка обновления токена'
             });
+        } finally {
+            connection.release();
         }
     },
 
-    // Выход из системы
+    // Logout
     logout: async (req, res) => {
+        const connection = await pool.getConnection();
         try {
-            await pool.execute(
-                'UPDATE users SET refresh_token = NULL WHERE id = ?',
+            await connection.execute(
+                'UPDATE users SET refresh_token = NULL, updated_at = NOW() WHERE id = ?',
                 [req.user.userId]
             );
             
-            res.json({ 
-                message: 'Logged out successfully' 
+            res.json({
+                success: true,
+                message: 'Выход выполнен успешно'
             });
         } catch (error) {
             console.error('Logout error:', error);
-            res.status(500).json({ 
-                error: 'Logout failed. Please try again.' 
+            res.status(500).json({
+                success: false,
+                error: 'Ошибка при выходе'
             });
+        } finally {
+            connection.release();
         }
     },
 
-    // Запрос на сброс пароля
-    forgotPassword: async (req, res) => {
-        try {
-            const { email } = req.body;
-
-            if (!email) {
-                return res.status(400).json({ 
-                    error: 'Email is required' 
-                });
-            }
-
-            // Проверка существования пользователя
-            const [users] = await pool.execute(
-                'SELECT id FROM users WHERE email = ?',
-                [email]
-            );
-
-            if (!users.length) {
-                return res.status(404).json({ 
-                    error: 'User not found' 
-                });
-            }
-
-            const resetToken = generateRandomToken();
-            const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 час
-
-            await pool.execute(
-                'UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?',
-                [resetToken, resetTokenExpiry, email]
-            );
-
-            // Отправка email для сброса пароля
-            await sendPasswordResetEmail(email, resetToken);
-
-            res.json({ 
-                message: 'Password reset instructions sent to email' 
-            });
-        } catch (error) {
-            console.error('Password reset request error:', error);
-            res.status(500).json({ 
-                error: 'Failed to process password reset request' 
-            });
-        }
-    },
-
-    // Сброс пароля
-    resetPassword: async (req, res) => {
-        try {
-            const { token, newPassword } = req.body;
-
-            if (!token || !newPassword) {
-                return res.status(400).json({ 
-                    error: 'Token and new password are required' 
-                });
-            }
-
-            // Проверка токена
-            const [users] = await pool.execute(
-                'SELECT * FROM users WHERE reset_token = ? AND reset_token_expiry > NOW()',
-                [token]
-            );
-
-            if (!users.length) {
-                return res.status(400).json({ 
-                    error: 'Invalid or expired reset token' 
-                });
-            }
-
-            // Обновление пароля
-            const hashedPassword = await hashPassword(newPassword);
-            await pool.execute(
-                'UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?',
-                [hashedPassword, users[0].id]
-            );
-
-            res.json({ 
-                message: 'Password reset successful' 
-            });
-        } catch (error) {
-            console.error('Password reset error:', error);
-            res.status(500).json({ 
-                error: 'Failed to reset password' 
-            });
-        }
-    },
-
-    // Получение данных пользователя
+    // Get user info
     getMe: async (req, res) => {
+        const connection = await pool.getConnection();
         try {
-            const [users] = await pool.execute(
+            const [users] = await connection.execute(
                 'SELECT id, email, first_name, last_name, is_verified FROM users WHERE id = ?',
                 [req.user.userId]
             );
 
             if (!users.length) {
-                return res.status(404).json({ 
-                    error: 'User not found' 
+                return res.status(404).json({
+                    success: false,
+                    error: 'Пользователь не найден'
                 });
             }
 
-            res.json(users[0]);
+            res.json({
+                success: true,
+                user: users[0]
+            });
         } catch (error) {
             console.error('Get user error:', error);
-            res.status(500).json({ 
-                error: 'Failed to retrieve user data' 
+            res.status(500).json({
+                success: false,
+                error: 'Ошибка получения данных пользователя'
             });
+        } finally {
+            connection.release();
         }
     }
 };
