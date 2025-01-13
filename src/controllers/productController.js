@@ -55,25 +55,46 @@ const productController = {
         'SELECT * FROM products WHERE id = ?',
         [req.params.id]
       );
-
+  
       if (products.length === 0) {
         return res.status(404).json({ 
           error: 'Product not found',
           message: `Product with id ${req.params.id} does not exist` 
         });
       }
-
+  
       const product = products[0];
-      res.json({
+  
+      // Безопасный парсинг JSON с проверкой на null и undefined
+      const safeParseJSON = (jsonString, defaultValue = []) => {
+        if (!jsonString) return defaultValue;
+        try {
+          return JSON.parse(jsonString);
+        } catch (e) {
+          console.error('JSON parse error:', e);
+          return defaultValue;
+        }
+      };
+  
+      // Обработка данных перед отправкой
+      const processedProduct = {
         ...product,
-        images: JSON.parse(product.images || '[]'),
-        tags: JSON.parse(product.tags || '[]'),
-        gender: JSON.parse(product.gender || '[]'),
-        colors: JSON.parse(product.colors || '[]'),
-        sizes: JSON.parse(product.sizes || '[]'),
-        new_label: JSON.parse(product.new_label || 'null'),
-        sale_label: JSON.parse(product.sale_label || 'null')
-      });
+        images: safeParseJSON(product.images, []),
+        colors: safeParseJSON(product.colors, []),
+        sizes: safeParseJSON(product.sizes, []),
+        tags: safeParseJSON(product.tags, []),
+        gender: safeParseJSON(product.gender, []),
+        new_label: safeParseJSON(product.new_label, null),
+        sale_label: safeParseJSON(product.sale_label, null),
+        is_published: Boolean(product.is_published),
+        // Преобразование числовых полей
+        price: parseFloat(product.price),
+        price_sale: product.price_sale ? parseFloat(product.price_sale) : null,
+        quantity: parseInt(product.quantity),
+        taxes: product.taxes ? parseFloat(product.taxes) : null
+      };
+  
+      res.json(processedProduct);
     } catch (error) {
       console.error('Error in getProductById:', error);
       res.status(500).json({ 
@@ -118,67 +139,73 @@ const productController = {
         });
       }
   
+      // Подготовка данных для вставки
+      const insertData = {
+        name,
+        description,
+        sub_description: sub_description || null,
+        code,
+        sku,
+        price: parseFloat(price),
+        price_sale: price_sale ? parseFloat(price_sale) : null,
+        quantity: parseInt(quantity),
+        taxes: taxes ? parseFloat(taxes) : null,
+        images: JSON.stringify([]),
+        colors: JSON.stringify(colors || []),
+        sizes: JSON.stringify(sizes || []),
+        tags: JSON.stringify(tags || []),
+        gender: JSON.stringify(gender || []),
+        category: category || null,
+        new_label: new_label ? JSON.stringify(new_label) : null,
+        sale_label: sale_label ? JSON.stringify(sale_label) : null,
+        is_published: is_published ? 1 : 0
+      };
+  
+      // Создание SQL запроса динамически
+      const fields = Object.keys(insertData).join(', ');
+      const placeholders = Object.keys(insertData).map(() => '?').join(', ');
+      const values = Object.values(insertData);
+  
       const [result] = await db.query(
-        `INSERT INTO products (
-          name,
-          description,
-          sub_description,
-          code,
-          sku,
-          price,
-          price_sale,
-          quantity,
-          taxes,
-          images,
-          colors,
-          sizes,
-          tags,
-          gender,
-          category,
-          new_label,
-          sale_label,
-          is_published
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          name,
-          description,
-          sub_description || null,
-          code,
-          sku,
-          parseFloat(price),
-          price_sale ? parseFloat(price_sale) : null,
-          parseInt(quantity),
-          taxes ? parseFloat(taxes) : null,
-          JSON.stringify([]),  // пустой массив для images
-          JSON.stringify(colors || []),
-          JSON.stringify(sizes || []),
-          JSON.stringify(tags || []),
-          JSON.stringify(gender || []),
-          category || null,
-          JSON.stringify(new_label || null),
-          JSON.stringify(sale_label || null),
-          is_published ? 1 : 0  // преобразуем в 0/1 для tinyint
-        ]
+        `INSERT INTO products (${fields}) VALUES (${placeholders})`,
+        values
       );
   
-      // Получаем созданный продукт
+      // Получение созданного продукта
       const [newProduct] = await db.query(
         'SELECT * FROM products WHERE id = ?',
         [result.insertId]
       );
   
-      // Возвращаем ответ с обработанными JSON полями
-      res.status(201).json({
+      // Безопасный парсинг JSON
+      const safeParseJSON = (jsonString, defaultValue = []) => {
+        if (!jsonString) return defaultValue;
+        try {
+          return JSON.parse(jsonString);
+        } catch (e) {
+          console.error('JSON parse error:', e);
+          return defaultValue;
+        }
+      };
+  
+      // Обработка данных перед отправкой
+      const processedProduct = {
         ...newProduct[0],
-        images: JSON.parse(newProduct[0].images || '[]'),
-        colors: JSON.parse(newProduct[0].colors || '[]'),
-        sizes: JSON.parse(newProduct[0].sizes || '[]'),
-        tags: JSON.parse(newProduct[0].tags || '[]'),
-        gender: JSON.parse(newProduct[0].gender || '[]'),
-        new_label: JSON.parse(newProduct[0].new_label || 'null'),
-        sale_label: JSON.parse(newProduct[0].sale_label || 'null'),
-        is_published: Boolean(newProduct[0].is_published)
-      });
+        images: safeParseJSON(newProduct[0].images, []),
+        colors: safeParseJSON(newProduct[0].colors, []),
+        sizes: safeParseJSON(newProduct[0].sizes, []),
+        tags: safeParseJSON(newProduct[0].tags, []),
+        gender: safeParseJSON(newProduct[0].gender, []),
+        new_label: safeParseJSON(newProduct[0].new_label, null),
+        sale_label: safeParseJSON(newProduct[0].sale_label, null),
+        is_published: Boolean(newProduct[0].is_published),
+        price: parseFloat(newProduct[0].price),
+        price_sale: newProduct[0].price_sale ? parseFloat(newProduct[0].price_sale) : null,
+        quantity: parseInt(newProduct[0].quantity),
+        taxes: newProduct[0].taxes ? parseFloat(newProduct[0].taxes) : null
+      };
+  
+      res.status(201).json(processedProduct);
     } catch (error) {
       console.error('Error in createProduct:', error);
       res.status(500).json({ 
