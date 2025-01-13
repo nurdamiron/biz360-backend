@@ -3,8 +3,32 @@ const cors = require('cors');
 require('dotenv').config();
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes'); // Импорт маршрутов продуктов
-
+const path = require('path');
 const app = express();
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// В app.js
+const fs = require('fs');
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)){
+    fs.mkdirSync(uploadsDir);
+}
+
+// В app.js
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        error: 'File too large',
+        message: 'File size cannot exceed 5MB'
+      });
+    }
+  }
+  next(error);
+});
+
+
 
 // Разрешенные домены
 const whitelist = [

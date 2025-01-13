@@ -119,7 +119,7 @@ const productController = {
       }
 
       const images = req.files?.map(file => ({
-        url: `/uploads/${file.filename}` // Добавлен leading slash
+        url: path.join('/uploads', file.filename) // Используем path.join
       })) || [];
 
       const [result] = await db.query(
@@ -154,6 +154,15 @@ const productController = {
         'SELECT * FROM products WHERE id = ?',
         [result.insertId]
       );
+
+      if (!name || !description || !code || !sku || !price || !quantity) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          fields: ['name', 'description', 'code', 'sku', 'price', 'quantity'].filter(
+            field => !req.body[field]
+          )
+        });
+      }
 
       res.status(201).json({
         ...newProduct[0],
@@ -219,6 +228,15 @@ const productController = {
         return res.status(400).json({
           error: 'Validation error',
           message: 'Product with this code or SKU already exists'
+        });
+      }
+
+      if (!name || !description || !code || !sku || !price || !quantity) {
+        return res.status(400).json({
+          error: 'Missing required fields',
+          fields: ['name', 'description', 'code', 'sku', 'price', 'quantity'].filter(
+            field => !req.body[field]
+          )
         });
       }
 
