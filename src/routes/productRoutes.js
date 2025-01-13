@@ -1,24 +1,44 @@
+// routes/productRoutes.js
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
-const auth = require('../middleware/auth'); // Если требуется защита
+const { upload } = require('../middleware/uploadMiddleware');
+const validateRequest = require('../middleware/validateRequest');
 
-// Получить список всех продуктов
+// Определяем обязательные поля для продукта
+const requiredProductFields = [
+  'name',
+  'description',
+  'code',
+  'sku',
+  'price',
+  'quantity'
+];
+
+// GET /api/product/list - получение списка продуктов
 router.get('/list', productController.getProducts);
 
-// Получить детали конкретного продукта
-router.get('/details/:id', productController.getProductDetails);
+// GET /api/product/details/:id - получение деталей продукта
+router.get('/details/:id', productController.getProductById);
 
-// Добавить новый продукт
-router.post('/', auth, productController.createProduct);
-
-// Обновить продукт
-router.put('/:id', auth, productController.updateProduct);
-
-// Удалить продукт
-router.delete('/:id', auth, productController.deleteProduct);
-
-// Поиск продуктов
+// GET /api/product/search - поиск продуктов
 router.get('/search', productController.searchProducts);
+
+// POST /api/product - создание нового продукта
+router.post('/', 
+  upload.array('images', 10),
+  validateRequest(requiredProductFields),
+  productController.createProduct
+);
+
+// PUT /api/product/:id - обновление продукта
+router.put('/:id', 
+  upload.array('images', 10),
+  validateRequest(requiredProductFields),
+  productController.updateProduct
+);
+
+// DELETE /api/product/:id - удаление продукта
+router.delete('/:id', productController.deleteProduct);
 
 module.exports = router;
