@@ -1,4 +1,4 @@
-// src/routes/productRoutes.js
+// routes/productRoutes.js
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
@@ -16,7 +16,10 @@ const requiredProductFields = [
 ];
 
 // GET /api/product/list - получение списка продуктов
-router.get('/list', productController.getProducts);
+router.get('/list', async (req, res) => {
+  console.log('List endpoint hit:', req.query);
+  await productController.getProducts(req, res);
+});
 
 // GET /api/product/details/:id - получение деталей продукта
 router.get('/details/:id', productController.getProductById);

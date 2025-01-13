@@ -12,24 +12,34 @@ const productController = {
       const sort = allowedSortFields.includes(req.query.sort) ? req.query.sort : 'created_at';
       const order = req.query.order?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 
-      const [products] = await db.query(
-        `SELECT SQL_CALC_FOUND_ROWS * FROM products ORDER BY ${sort} ${order} LIMIT ? OFFSET ?`,
-        [limit, offset]
-      );
+      const query = `
+        SELECT SQL_CALC_FOUND_ROWS *
+        FROM products 
+        ORDER BY ${sort} ${order} 
+        LIMIT ? OFFSET ?
+      `;
 
+      console.log('Executing query:', { query, params: [limit, offset] });
+
+      const [products] = await db.query(query, [limit, offset]);
       const [[{ total }]] = await db.query('SELECT FOUND_ROWS() as total');
 
-      // Функция для определения типа инвентаря
-      const getInventoryType = (quantity) => {
-        if (quantity <= 0) return 'out of stock';
-        if (quantity <= 10) return 'low stock';
-        return 'in stock';
-      };
+      console.log(`Found ${products.length} products out of ${total} total`);
 
       const processedProducts = products.map(product => {
-        const images = JSON.parse(product.images || '[]');
-        const quantity = parseInt(product.quantity);
+        // Безопасный парсинг JSON
+        const safeParseJSON = (jsonStr, defaultValue = []) => {
+          if (!jsonStr) return defaultValue;
+          try {
+            return JSON.parse(jsonStr);
+          } catch (e) {
+            console.error('JSON parse error:', e);
+            return defaultValue;
+          }
+        };
 
+        const quantity = parseInt(product.quantity);
+        const images = safeParseJSON(product.images);
         return {
           id: product.id,
           name: product.name,
@@ -41,22 +51,22 @@ const productController = {
           price: parseFloat(product.price),
           priceSale: product.price_sale ? parseFloat(product.price_sale) : null,
           quantity: quantity,
-          available: quantity, // Используем quantity как available
+          available: quantity,
           taxes: product.taxes ? parseFloat(product.taxes) : null,
           category: product.category || '',
-          colors: JSON.parse(product.colors || '[]'),
-          sizes: JSON.parse(product.sizes || '[]'),
-          tags: JSON.parse(product.tags || '[]'),
-          gender: JSON.parse(product.gender || '[]'),
-          new_label: JSON.parse(product.new_label || 'null'),
-          sale_label: JSON.parse(product.sale_label || 'null'),
-          publish: product.is_published ? 'published' : 'draft',
+          colors: safeParseJSON(product.colors),
+          sizes: safeParseJSON(product.sizes),
+          tags: safeParseJSON(product.tags),
+          gender: safeParseJSON(product.gender),
+          publish: Boolean(product.is_published) ? 'published' : 'draft',
           createdAt: product.created_at,
-          inventoryType: getInventoryType(quantity)
+          inventoryType: quantity <= 0 ? 'out of stock' : 
+                        quantity <= 10 ? 'low stock' : 
+                        'in stock'
         };
       });
 
-      res.json({
+      const response = {
         products: processedProducts,
         pagination: {
           total,
@@ -64,7 +74,13 @@ const productController = {
           limit,
           totalPages: Math.ceil(total / limit)
         }
-      });
+      };
+
+      console.log('Sending response with pagination:', response.pagination);
+
+
+      res.json(response);
+
     } catch (error) {
       console.error('Error in getProducts:', error);
       res.status(500).json({ 
