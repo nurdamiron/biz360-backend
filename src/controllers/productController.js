@@ -104,111 +104,80 @@ const productController = {
         sale_label,
         is_published
       } = req.body;
-
+  
       // Проверка уникальности code и sku
       const [existing] = await db.query(
         'SELECT id FROM products WHERE code = ? OR sku = ?',
         [code, sku]
       );
-
+  
       if (existing.length > 0) {
         return res.status(400).json({
           error: 'Validation error',
           message: 'Product with this code or SKU already exists'
         });
       }
-
-      const images = req.files?.map(file => ({
-        url: path.join('/uploads', file.filename) // Используем path.join
-      })) || [];
-
-      // В createProduct нужно исправить SQL запрос, чтобы он точно соответствовал передаваемым значениям
-const [result] = await db.query(
-  `INSERT INTO products (
-    name, 
-    description, 
-    sub_description, 
-    images, 
-    code, 
-    sku,
-    price, 
-    price_sale, 
-    quantity, 
-    taxes, 
-    colors, 
-    sizes,
-    tags, 
-    gender, 
-    category, 
-    new_label, 
-    sale_label, 
-    is_published
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  [
-    name,
-    description,
-    sub_description || null,
-    JSON.stringify([]),  // для images, так как они пока не передаются
-    code,
-    sku,
-    parseFloat(price),
-    price_sale ? parseFloat(price_sale) : null,
-    parseInt(quantity),
-    taxes ? parseFloat(taxes) : null,
-    JSON.stringify(colors || []),
-    JSON.stringify(sizes || []),
-    JSON.stringify(tags || []),
-    JSON.stringify(gender || []),
-    category || null,
-    JSON.stringify(new_label || null),
-    JSON.stringify(sale_label || null),
-    is_published === true || is_published === 'true'
-  ]
-);
-
-console.log('Inserting values:', {
-  name,
-  description,
-  sub_description,
-  code,
-  sku,
-  price,
-  price_sale,
-  quantity,
-  taxes,
-  colors,
-  sizes,
-  tags,
-  gender,
-  category,
-  new_label,
-  sale_label,
-  is_published
-});
-
+  
+      const [result] = await db.query(
+        `INSERT INTO products (
+          name,
+          description,
+          sub_description,
+          code,
+          sku,
+          price,
+          price_sale,
+          quantity,
+          taxes,
+          images,
+          colors,
+          sizes,
+          tags,
+          gender,
+          category,
+          new_label,
+          sale_label,
+          is_published
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          name,
+          description,
+          sub_description || null,
+          code,
+          sku,
+          parseFloat(price),
+          price_sale ? parseFloat(price_sale) : null,
+          parseInt(quantity),
+          taxes ? parseFloat(taxes) : null,
+          JSON.stringify([]),  // пустой массив для images
+          JSON.stringify(colors || []),
+          JSON.stringify(sizes || []),
+          JSON.stringify(tags || []),
+          JSON.stringify(gender || []),
+          category || null,
+          JSON.stringify(new_label || null),
+          JSON.stringify(sale_label || null),
+          is_published ? 1 : 0  // преобразуем в 0/1 для tinyint
+        ]
+      );
+  
+      // Получаем созданный продукт
       const [newProduct] = await db.query(
         'SELECT * FROM products WHERE id = ?',
         [result.insertId]
       );
-
-      if (!name || !description || !code || !sku || !price || !quantity) {
-        return res.status(400).json({
-          error: 'Missing required fields',
-          fields: ['name', 'description', 'code', 'sku', 'price', 'quantity'].filter(
-            field => !req.body[field]
-          )
-        });
-      }
-
+  
+      // Возвращаем ответ с обработанными JSON полями
       res.status(201).json({
         ...newProduct[0],
         images: JSON.parse(newProduct[0].images || '[]'),
-        tags: JSON.parse(newProduct[0].tags || '[]'),
-        gender: JSON.parse(newProduct[0].gender || '[]'),
         colors: JSON.parse(newProduct[0].colors || '[]'),
         sizes: JSON.parse(newProduct[0].sizes || '[]'),
+        tags: JSON.parse(newProduct[0].tags || '[]'),
+        gender: JSON.parse(newProduct[0].gender || '[]'),
         new_label: JSON.parse(newProduct[0].new_label || 'null'),
-        sale_label: JSON.parse(newProduct[0].sale_label || 'null')
+        sale_label: JSON.parse(newProduct[0].sale_label || 'null'),
+        is_published: Boolean(newProduct[0].is_published)
       });
     } catch (error) {
       console.error('Error in createProduct:', error);
