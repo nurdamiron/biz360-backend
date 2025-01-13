@@ -8,7 +8,6 @@ const productController = {
       const limit = parseInt(req.query.limit) || 10;
       const offset = (page - 1) * limit;
       
-      // Защита от SQL-инъекций для сортировки
       const allowedSortFields = ['created_at', 'name', 'price', 'quantity'];
       const sort = allowedSortFields.includes(req.query.sort) ? req.query.sort : 'created_at';
       const order = req.query.order?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
@@ -20,16 +19,42 @@ const productController = {
 
       const [[{ total }]] = await db.query('SELECT FOUND_ROWS() as total');
 
-      const processedProducts = products.map(product => ({
-        ...product,
-        images: JSON.parse(product.images || '[]'),
-        tags: JSON.parse(product.tags || '[]'),
-        gender: JSON.parse(product.gender || '[]'),
-        colors: JSON.parse(product.colors || '[]'),
-        sizes: JSON.parse(product.sizes || '[]'),
-        new_label: JSON.parse(product.new_label || 'null'),
-        sale_label: JSON.parse(product.sale_label || 'null')
-      }));
+      // Функция для определения типа инвентаря
+      const getInventoryType = (quantity) => {
+        if (quantity <= 0) return 'out of stock';
+        if (quantity <= 10) return 'low stock';
+        return 'in stock';
+      };
+
+      const processedProducts = products.map(product => {
+        const images = JSON.parse(product.images || '[]');
+        const quantity = parseInt(product.quantity);
+
+        return {
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          code: product.code,
+          sku: product.sku,
+          coverUrl: images[0]?.url || '',
+          images: images,
+          price: parseFloat(product.price),
+          priceSale: product.price_sale ? parseFloat(product.price_sale) : null,
+          quantity: quantity,
+          available: quantity, // Используем quantity как available
+          taxes: product.taxes ? parseFloat(product.taxes) : null,
+          category: product.category || '',
+          colors: JSON.parse(product.colors || '[]'),
+          sizes: JSON.parse(product.sizes || '[]'),
+          tags: JSON.parse(product.tags || '[]'),
+          gender: JSON.parse(product.gender || '[]'),
+          new_label: JSON.parse(product.new_label || 'null'),
+          sale_label: JSON.parse(product.sale_label || 'null'),
+          publish: product.is_published ? 'published' : 'draft',
+          createdAt: product.created_at,
+          inventoryType: getInventoryType(quantity)
+        };
+      });
 
       res.json({
         products: processedProducts,
@@ -367,29 +392,56 @@ const productController = {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const offset = (page - 1) * limit;
-
+  
       const searchQuery = `%${query}%`;
-
+  
       const [products] = await db.query(
         `SELECT SQL_CALC_FOUND_ROWS * FROM products 
          WHERE name LIKE ? OR description LIKE ? OR code LIKE ? OR sku LIKE ?
          LIMIT ? OFFSET ?`,
         [searchQuery, searchQuery, searchQuery, searchQuery, limit, offset]
       );
-
+  
       const [[{ total }]] = await db.query('SELECT FOUND_ROWS() as total');
-
-      res.json({
-        products: products.map(product => ({
-          ...product,
-          images: JSON.parse(product.images || '[]'),
-          tags: JSON.parse(product.tags || '[]'),
-          gender: JSON.parse(product.gender || '[]'),
+  
+      const getInventoryType = (quantity) => {
+        if (quantity <= 0) return 'out of stock';
+        if (quantity <= 10) return 'low stock';
+        return 'in stock';
+      };
+  
+      const processedProducts = products.map(product => {
+        const images = JSON.parse(product.images || '[]');
+        const quantity = parseInt(product.quantity);
+  
+        return {
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          code: product.code,
+          sku: product.sku,
+          coverUrl: images[0]?.url || '',
+          images: images,
+          price: parseFloat(product.price),
+          priceSale: product.price_sale ? parseFloat(product.price_sale) : null,
+          quantity: quantity,
+          available: quantity,
+          taxes: product.taxes ? parseFloat(product.taxes) : null,
+          category: product.category || '',
           colors: JSON.parse(product.colors || '[]'),
           sizes: JSON.parse(product.sizes || '[]'),
+          tags: JSON.parse(product.tags || '[]'),
+          gender: JSON.parse(product.gender || '[]'),
           new_label: JSON.parse(product.new_label || 'null'),
-          sale_label: JSON.parse(product.sale_label || 'null')
-        })),
+          sale_label: JSON.parse(product.sale_label || 'null'),
+          publish: product.is_published ? 'published' : 'draft',
+          createdAt: product.created_at,
+          inventoryType: getInventoryType(quantity)
+        };
+      });
+  
+      res.json({
+        products: processedProducts,
         pagination: {
           total,
           page,
