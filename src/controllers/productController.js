@@ -122,33 +122,69 @@ const productController = {
         url: path.join('/uploads', file.filename) // Используем path.join
       })) || [];
 
-      const [result] = await db.query(
-        `INSERT INTO products (
-          name, description, sub_description, images, code, sku,
-          price, price_sale, quantity, taxes, colors, sizes,
-          tags, gender, category, new_label, sale_label, is_published
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          name,
-          description,
-          sub_description || null,
-          JSON.stringify(images),
-          code,
-          sku,
-          parseFloat(price),
-          price_sale ? parseFloat(price_sale) : null,
-          parseInt(quantity),
-          taxes ? parseFloat(taxes) : null,
-          colors || '[]',
-          sizes || '[]',
-          tags || '[]',
-          gender || '[]',
-          category || null,
-          new_label || null,
-          sale_label || null,
-          is_published === true || is_published === 'true'
-        ]
-      );
+      // В createProduct нужно исправить SQL запрос, чтобы он точно соответствовал передаваемым значениям
+const [result] = await db.query(
+  `INSERT INTO products (
+    name, 
+    description, 
+    sub_description, 
+    images, 
+    code, 
+    sku,
+    price, 
+    price_sale, 
+    quantity, 
+    taxes, 
+    colors, 
+    sizes,
+    tags, 
+    gender, 
+    category, 
+    new_label, 
+    sale_label, 
+    is_published
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [
+    name,
+    description,
+    sub_description || null,
+    JSON.stringify([]),  // для images, так как они пока не передаются
+    code,
+    sku,
+    parseFloat(price),
+    price_sale ? parseFloat(price_sale) : null,
+    parseInt(quantity),
+    taxes ? parseFloat(taxes) : null,
+    JSON.stringify(colors || []),
+    JSON.stringify(sizes || []),
+    JSON.stringify(tags || []),
+    JSON.stringify(gender || []),
+    category || null,
+    JSON.stringify(new_label || null),
+    JSON.stringify(sale_label || null),
+    is_published === true || is_published === 'true'
+  ]
+);
+
+console.log('Inserting values:', {
+  name,
+  description,
+  sub_description,
+  code,
+  sku,
+  price,
+  price_sale,
+  quantity,
+  taxes,
+  colors,
+  sizes,
+  tags,
+  gender,
+  category,
+  new_label,
+  sale_label,
+  is_published
+});
 
       const [newProduct] = await db.query(
         'SELECT * FROM products WHERE id = ?',
