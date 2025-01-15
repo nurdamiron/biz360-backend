@@ -229,7 +229,7 @@ const productController = {
         }
       };
   
-      // Обработка данных перед отправкой
+      // Обработка данных перед отправкой наверное
       const processedProduct = {
         ...newProduct[0],
         images: safeParseJSON(newProduct[0].images, []),
